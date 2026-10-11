@@ -134,20 +134,23 @@ def jd_claim_free_draw_chance():
         print("免费抽奖机会响应无法解析")
         return False
 
-    code = str(data.get("code", ""))
-    if data.get("code") == 200 and data.get("success"):
+    if data.get("success") is True:
         print("已领取一份免费抽奖机会")
         return True
 
-    message = str(data.get("message") or data.get("msg") or "")
+    code = str(data.get("code", ""))
+    message = str(data.get("message") or data.get("msg") or data.get("errorMessage") or "")
     if any(word in message for word in ("重复", "上限", "已完成", "已领取", "已经领取")):
         print("免费抽奖任务今日已完成或已达到领取上限")
         return True
 
-    if code == "3":
-        print("京东 Cookie 已失效，请更新 Actions Secret JD_COOKIE")
+    if code == "3" or any(word in message for word in ("未登录", "登录失效", "Cookie")):
+        print("京东登录状态异常，请检查 Actions Secret JD_COOKIE")
+    elif "活动" in message and any(word in message for word in ("不存在", "结束", "过期", "失效")):
+        print("免费抽奖活动可能已结束或活动 ID 已轮换")
     else:
-        print(f"免费抽奖机会暂未领取（京东返回 code={code or 'unknown'}）")
+        keys = ",".join(sorted(str(key) for key in data.keys())[:8]) or "none"
+        print(f"免费抽奖机会未确认（code={code or 'unknown'}, success=false, fields={keys}）")
     return False
 
 
@@ -156,9 +159,11 @@ def main():
         print("Missing required GitHub Actions secret: JD_COOKIE", file=sys.stderr)
         return 2
 
-    # Run both free tasks even if one of them fails, so the other can still complete.
-    results = [jd_bean_sign(), jd_claim_free_draw_chance()]
-    return 0 if all(results) else 1
+    # Run both free tasks even if one of them fails, with a pause to avoid rapid requests.
+    bean_ok = jd_bean_sign()
+    time.sleep(2)
+    draw_ok = jd_claim_free_draw_chance()
+    return 0 if bean_ok and draw_ok else 1
 
 
 if __name__ == "__main__":

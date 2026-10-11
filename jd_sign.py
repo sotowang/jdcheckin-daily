@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import sys
 import time
 
@@ -27,6 +28,19 @@ def parse_response(text):
         return json.loads(payload)
     except (json.JSONDecodeError, TypeError):
         return None
+
+
+def safe_message_excerpt(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if len(text) > 120:
+        return "[内容已省略]"
+    if re.search(r"(?i)(cookie|token|authorization|thor|sdtoken|_pst|pin=)", text):
+        return "[内容已省略]"
+    if re.search(r"\b\d{11}\b|[A-Za-z0-9_+/=-]{24,}", text):
+        return "[内容已省略]"
+    return text
 
 
 def jd_bean_sign():
@@ -134,23 +148,24 @@ def jd_claim_free_draw_chance():
         print("免费抽奖机会响应无法解析")
         return False
 
-    if data.get("success") is True:
+    success = data.get("success") is True or str(data.get("success", "")).lower() == "true"
+    if success:
         print("已领取一份免费抽奖机会")
         return True
 
-    code = str(data.get("code", ""))
-    message = str(data.get("message") or data.get("msg") or data.get("errorMessage") or "")
+    code = str(data.get("code") or data.get("errCode") or data.get("err_code") or "")
+    message = str(data.get("message") or data.get("msg") or data.get("errorMessage") or data.get("errMessage") or "")
     if any(word in message for word in ("重复", "上限", "已完成", "已领取", "已经领取")):
         print("免费抽奖任务今日已完成或已达到领取上限")
         return True
 
-    if code == "3" or any(word in message for word in ("未登录", "登录失效", "Cookie")):
+    if code == "3" or any(word in message.lower() for word in ("未登录", "登录失效", "cookie")):
         print("京东登录状态异常，请检查 Actions Secret JD_COOKIE")
     elif "活动" in message and any(word in message for word in ("不存在", "结束", "过期", "失效")):
         print("免费抽奖活动可能已结束或活动 ID 已轮换")
     else:
-        keys = ",".join(sorted(str(key) for key in data.keys())[:8]) or "none"
-        print(f"免费抽奖机会未确认（code={code or 'unknown'}, success=false, fields={keys}）")
+        excerpt = safe_message_excerpt(message) or "未知"
+        print(f"免费抽奖机会未确认（errCode={code or 'unknown'}，原因={excerpt}）")
     return False
 
 

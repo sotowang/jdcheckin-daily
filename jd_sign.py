@@ -10,6 +10,7 @@ import requests
 URL = "https://api.m.jd.com/client.action"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
 COOKIE = os.environ.get("JD_COOKIE", "").strip()
+FREE_DRAW_EALD = os.environ.get("JD_FREE_DRAW_EALD", "").strip()
 
 
 def parse_response(text):
@@ -104,13 +105,12 @@ def jd_bean_sign():
     return False
 
 
-def jd_claim_free_draw_chance():
-    """Claim the free daily draw chance; this does not spend a chance or submit a draw."""
+def jd_claim_free_draw_chance(activity_id):
+    """Claim a free daily draw chance; never spends a chance or submits a draw."""
     print("开始领取京东免费抽奖机会")
     function_id = "pc_interact_assign_execute"
-    # Activity ID from the selected project; JD may rotate it when the activity changes.
     body = {
-        "eald": "TLBebeJwk4ADHLtRfDsRcV4UvS1",
+        "eald": activity_id,
         "type": 5,
         "itemId": "1",
         "extraType": "sign",
@@ -159,7 +159,9 @@ def jd_claim_free_draw_chance():
         print("免费抽奖任务今日已完成或已达到领取上限")
         return True
 
-    if code == "3" or any(word in message.lower() for word in ("未登录", "登录失效", "cookie")):
+    if code == "102":
+        print("免费抽奖机会未领取（errCode=102：活动参数不合规，请核对当前活动 ID）")
+    elif code == "3" or any(word in message.lower() for word in ("未登录", "登录失效", "cookie")):
         print("京东登录状态异常，请检查 Actions Secret JD_COOKIE")
     elif "活动" in message and any(word in message for word in ("不存在", "结束", "过期", "失效")):
         print("免费抽奖活动可能已结束或活动 ID 已轮换")
@@ -174,10 +176,13 @@ def main():
         print("Missing required GitHub Actions secret: JD_COOKIE", file=sys.stderr)
         return 2
 
-    # Run both free tasks even if one of them fails, with a pause to avoid rapid requests.
     bean_ok = jd_bean_sign()
-    time.sleep(2)
-    draw_ok = jd_claim_free_draw_chance()
+    if FREE_DRAW_EALD:
+        time.sleep(2)
+        draw_ok = jd_claim_free_draw_chance(FREE_DRAW_EALD)
+    else:
+        print("免费抽奖机会任务未启用：未配置经验证的 Actions Variable JD_FREE_DRAW_EALD")
+        draw_ok = True
     return 0 if bean_ok and draw_ok else 1
 
 

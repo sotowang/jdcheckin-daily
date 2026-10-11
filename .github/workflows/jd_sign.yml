@@ -1,4 +1,4 @@
-name: 京东每日免费签到、领豆与抽奖机会
+name: 京东每日免费签到、领豆与可选抽奖机会
 
 on:
   schedule:
@@ -30,7 +30,8 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Run free JD check-ins, beans and draw chance
+      - name: Run JD free check-ins, beans and optional draw chance
         env:
           JD_COOKIE: ${{ secrets.JD_COOKIE }}
+          JD_FREE_DRAW_EALD: ${{ vars.JD_FREE_DRAW_EALD }}
         run: python jd_sign.py

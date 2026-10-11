@@ -1,4 +1,4 @@
-name: 京东每日领京豆
+name: 京东每日免费签到、领豆与抽奖机会
 
 on:
   schedule:
@@ -10,11 +10,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: jd-bean-sign
+  group: jd-free-daily
   cancel-in-progress: false
 
 jobs:
-  bean-sign:
+  free-daily:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -30,7 +30,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Sign in for JD Beans
+      - name: Run free JD check-ins, beans and draw chance
         env:
           JD_COOKIE: ${{ secrets.JD_COOKIE }}
         run: python jd_sign.py

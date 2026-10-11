@@ -7,6 +7,7 @@ import requests
 
 
 URL = "https://api.m.jd.com/client.action"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
 COOKIE = os.environ.get("JD_COOKIE", "").strip()
 
 
@@ -28,11 +29,8 @@ def parse_response(text):
         return None
 
 
-def main():
-    if not COOKIE:
-        print("Missing required GitHub Actions secret: JD_COOKIE", file=sys.stderr)
-        return 2
-
+def jd_bean_sign():
+    print("开始执行京东领京豆签到")
     now_ms = int(time.time() * 1000)
     body = {
         "fp": "-1",
@@ -56,43 +54,111 @@ def main():
         "jsonp": f"jsonp_{now_ms}_58482",
     }
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
+        "User-Agent": USER_AGENT,
         "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": COOKIE,
     }
-
     try:
         response = requests.post(URL, params=params, headers=headers, timeout=20)
         response.raise_for_status()
     except requests.RequestException as exc:
-        # Do not print request headers or response bodies; they may contain session data.
-        print(f"京东签到请求失败（{type(exc).__name__}）", file=sys.stderr)
-        return 1
+        print(f"京豆签到请求失败（{type(exc).__name__}）", file=sys.stderr)
+        return False
 
     data = parse_response(response.text)
     if not isinstance(data, dict):
-        print("无法解析京东签到响应")
-        return 1
+        print("京豆签到响应无法解析")
+        return False
 
     code = str(data.get("code", ""))
     if code == "0":
         award = data.get("data", {}).get("dailyAward", {}).get("beanAward", {}).get("beanCount")
         if award is None:
-            print("签到成功")
+            print("京豆签到成功")
         else:
-            print(f"签到成功，获得 {award} 京豆")
-        return 0
+            print(f"京豆签到成功，获得 {award} 京豆")
+        return True
 
     if "已签到" in response.text or "已签到" in str(data):
-        print("今天已经签到过了")
-        return 0
+        print("今天已经完成京豆签到")
+        return True
 
     if code == "3":
-        print("京东 Cookie 已失效，请更新 GitHub Actions Secret JD_COOKIE")
-        return 1
+        print("京东 Cookie 已失效，请更新 Actions Secret JD_COOKIE")
+    else:
+        print(f"京豆签到未成功（京东返回 code={code or 'unknown'}）")
+    return False
 
-    print("签到未成功；请在 Actions 运行日志中查看京东返回状态（不会显示 Cookie）")
-    return 1
+
+def jd_claim_free_draw_chance():
+    """Claim the free daily draw chance; this does not spend a chance or submit a draw."""
+    print("开始领取京东免费抽奖机会")
+    function_id = "pc_interact_assign_execute"
+    # Activity ID from the selected project; JD may rotate it when the activity changes.
+    body = {
+        "eald": "TLBebeJwk4ADHLtRfDsRcV4UvS1",
+        "type": 5,
+        "itemId": "1",
+        "extraType": "sign",
+        "rk": False,
+        "actionType": 1,
+    }
+    payload = {
+        "functionId": function_id,
+        "body": json.dumps(body, separators=(",", ":")),
+        "appid": "pc_interact_center",
+        "client": "pc",
+        "clientVersion": "1.0.0",
+        "t": int(time.time() * 1000),
+    }
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Cookie": COOKIE,
+        "Referer": "https://interact.jd.com/",
+        "Origin": "https://interact.jd.com",
+    }
+    try:
+        response = requests.post(URL, headers=headers, data=payload, timeout=20)
+        response.raise_for_status()
+    except requests.RequestException as exc:
+        print(f"免费抽奖机会请求失败（{type(exc).__name__}）", file=sys.stderr)
+        return False
+
+    try:
+        data = response.json()
+    except ValueError:
+        print("免费抽奖机会响应无法解析")
+        return False
+    if not isinstance(data, dict):
+        print("免费抽奖机会响应无法解析")
+        return False
+
+    code = str(data.get("code", ""))
+    if data.get("code") == 200 and data.get("success"):
+        print("已领取一份免费抽奖机会")
+        return True
+
+    message = str(data.get("message") or data.get("msg") or "")
+    if any(word in message for word in ("重复", "上限", "已完成", "已领取", "已经领取")):
+        print("免费抽奖任务今日已完成或已达到领取上限")
+        return True
+
+    if code == "3":
+        print("京东 Cookie 已失效，请更新 Actions Secret JD_COOKIE")
+    else:
+        print(f"免费抽奖机会暂未领取（京东返回 code={code or 'unknown'}）")
+    return False
+
+
+def main():
+    if not COOKIE:
+        print("Missing required GitHub Actions secret: JD_COOKIE", file=sys.stderr)
+        return 2
+
+    # Run both free tasks even if one of them fails, so the other can still complete.
+    results = [jd_bean_sign(), jd_claim_free_draw_chance()]
+    return 0 if all(results) else 1
 
 
 if __name__ == "__main__":
